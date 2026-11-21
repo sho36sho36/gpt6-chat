@@ -21,7 +21,7 @@ def db(q, a=(), f=False):
 def init():
     db("CREATE TABLE IF NOT EXISTS users (u TEXT PRIMARY KEY, p TEXT, ok INT, adm INT)")
     db("CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, u TEXT, title TEXT, msgs TEXT, ts REAL)")
-    db("INSERT OR IGNORE INTO users VALUES ('sho36', ?, 1, 1)", (hp("shoma0121"),))
+    db("INSERT OR REPLACE INTO users VALUES ('sho36', ?, 1, 1)", (hp("shoma0121"),))
 
 init()
 ulist = lambda: db("SELECT u, CASE WHEN ok=1 THEN '✅許可' ELSE '⛔停止' END FROM users WHERE u!='sho36'", f=True)
