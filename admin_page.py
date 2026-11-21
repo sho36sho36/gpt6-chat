@@ -45,21 +45,34 @@ def mng(act, t):
         db("DELETE FROM tokens WHERE u=?", (t,))
     return get_admin_table()
 
+def unlock_admin(pw):
+    if (pw or "").strip() == "shoma0121":
+        return "", gr.update(visible=False), gr.update(visible=True), get_admin_table()
+    return "❌ 管理者パスワードが違います", gr.update(visible=True), gr.update(visible=False), []
+
 def mount_admin_page(demo, secret_path="/admin-sho36-panel"):
     init_tok_db()
     with demo.route("管理ページ", secret_path, show_in_navbar=False):
-        gr.Markdown("## 👑 管理者専用ページ (sho36)")
-        tbl = gr.Dataframe(
-            headers=["ユーザー名", "状態", "入力トークン", "出力トークン", "合計トークン"],
-            value=get_admin_table,
-            interactive=False
-        )
-        with gr.Row():
-            ti = gr.Textbox(label="対象ユーザー名")
-            bt = gr.Button("許可 / 停止 を切り替え", variant="primary")
-            bd = gr.Button("アカウント完全削除", variant="stop")
-            bref = gr.Button("最新情報に更新")
+        with gr.Column(visible=True) as lock_box:
+            gr.Markdown("## 🔒 管理者認証")
+            pw_in = gr.Textbox(label="管理者パスワード", type="password")
+            btn_unlock = gr.Button("認証して管理画面を開く", variant="primary")
+            err_md = gr.Markdown()
 
+        with gr.Column(visible=False) as panel_box:
+            gr.Markdown("## 👑 管理者専用ページ (sho36)")
+            tbl = gr.Dataframe(
+                headers=["ユーザー名", "状態", "入力トークン", "出力トークン", "合計トークン"],
+                interactive=False
+            )
+            with gr.Row():
+                ti = gr.Textbox(label="対象ユーザー名")
+                bt = gr.Button("許可 / 停止 を切り替え", variant="primary")
+                bd = gr.Button("アカウント完全削除", variant="stop")
+                bref = gr.Button("最新情報に更新")
+
+        btn_unlock.click(unlock_admin, pw_in, [err_md, lock_box, panel_box, tbl])
+        pw_in.submit(unlock_admin, pw_in, [err_md, lock_box, panel_box, tbl])
         bt.click(lambda t: mng("tog", t), ti, tbl)
         bd.click(lambda t: mng("del", t), ti, tbl)
         bref.click(get_admin_table, None, tbl)
