@@ -12,7 +12,7 @@ def hash_pw(pw):
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, pw TEXT, approved INT, admin INT)")
-    conn.execute("INSERT OR IGNORE INTO users VALUES ('sho36', ?, 1, 1)", (hash_pw("shoma0121"),))
+    conn.execute("INSERT OR REPLACE INTO users VALUES ('sho36', ?, 1, 1)", (hash_pw("shoma0121"),))
     conn.commit()
     conn.close()
 
@@ -31,14 +31,16 @@ def register(u, p):
         conn.close()
 
 def login(u, p):
+    if not u or not p:
+        return None, False, "❌ 名前とパスワードを入力してください", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), []
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute("SELECT pw, approved, admin FROM users WHERE username=?", (u.strip(),)).fetchone()
     conn.close()
-    if not row or row != hash_pw(p.strip()):
+    if not row or row[0] != hash_pw(p.strip()):
         return None, False, "❌ 名前またはパスワードが違います", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), []
-    if not row:
+    if row[1] == 0:
         return None, False, "⏳ 承認待ち（利用停止中）です。管理者(sho36)の許可をお待ちください。", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), []
-    is_admin = bool(row)
+    is_admin = bool(row[2])
     return u.strip(), is_admin, "", gr.update(visible=False), gr.update(visible=True), gr.update(visible=is_admin), get_user_list() if is_admin else []
 
 def get_user_list():
