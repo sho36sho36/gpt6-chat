@@ -26,8 +26,8 @@ def init():
     db("INSERT OR REPLACE INTO users VALUES ('sho36', ?, 1, 1)", (hp("shoma0121"),))
 
 init()
-gchats = lambda u: [(r, r) for r in db("SELECT id, title FROM chats WHERE u=? ORDER BY ts DESC", (u,), True)]
-lchat = lambda cid: json.loads(r) if (r := db("SELECT msgs FROM chats WHERE id=?", (cid,), True)) else []
+gchats = lambda u: [(r[1], r[0]) for r in db("SELECT id, title FROM chats WHERE u=? ORDER BY ts DESC", (u,), True)]
+lchat = lambda cid: json.loads(r[0][0]) if (r := db("SELECT msgs FROM chats WHERE id=?", (cid,), True)) else []
 
 def nchat(u):
     cid = uuid.uuid4().hex[:8]
@@ -37,7 +37,7 @@ def nchat(u):
 def dchat(u, cid):
     if cid: db("DELETE FROM chats WHERE id=? AND u=?", (cid, u))
     ch = gchats(u)
-    return (gr.update(choices=ch, value=ch), lchat(ch)) if ch else nchat(u)
+    return (gr.update(choices=ch, value=ch[0][1]), lchat(ch[0][1])) if ch else nchat(u)
 
 def reg(u, p):
     init()
@@ -46,15 +46,20 @@ def reg(u, p):
     except sqlite3.IntegrityError: return "❌ 登録済みです"
 
 def login(u, p):
+    init()
     hide = (None, False, gr.update(visible=True), gr.update(visible=False), gr.update(value="", visible=False), gr.update(choices=[], value=None), [])
     try:
-        r = db("SELECT p, ok, adm FROM users WHERE u=?", (u.strip(),), True) if u and p else []
-        if not r or r != hp(p.strip()): return ("❌ 認証失敗",) + hide
-        if not r: return ("⏳ 承認待ちです",) + hide
-        un, adm = u.strip(), bool(r)
+        un = (u or "").strip()
+        pw = (p or "").strip()
+        if not un or not pw: return ("❌ 名前とパスワードを入力してください",) + hide
+        r = db("SELECT p, ok, adm FROM users WHERE u=?", (un,), True)
+        if not r: return (f"❌ ユーザー「{un}」が見つかりません",) + hide
+        if r[0][0] != hp(pw): return ("❌ パスワードが一致しません",) + hide
+        if not r[0][1]: return ("⏳ 承認待ちです（管理者sho36の許可が必要です）",) + hide
+        adm = bool(r[0][2])
         ch = gchats(un)
-        dd, ms = (gr.update(choices=ch, value=ch), lchat(ch)) if ch else nchat(un)
-        adm_link = gr.update(value=f"👑 **[管理者専用ページを開く（別タブ）]({ADMIN_PATH})**", visible=adm)
+        dd, ms = (gr.update(choices=ch, value=ch[0][1]), lchat(ch[0][1])) if ch else nchat(un)
+        adm_link = gr.update(value=f"👑 **[管理者専用ページを開く]({ADMIN_PATH})**", visible=adm)
         return ("", un, adm, gr.update(visible=False), gr.update(visible=True), adm_link, dd, ms)
     except Exception:
         return (f"❌ エラー:\n```\n{traceback.format_exc()}\n```",) + hide
@@ -80,7 +85,7 @@ def cbatch(bid):
     try:
         b = client.batches.retrieve(bid.strip())
         if b.status != "completed" or not b.output_file_id: return f"⏳ {b.status}", None
-        d = json.loads(client.files.content(b.output_file_id).text.splitlines())
+        d = json.loads(client.files.content(b.output_file_id).text.splitlines()[0])
         t = "\n".join(c["text"] for i in d["response"]["body"]["output"] for c in i.get("content", []) if c.get("type") == "output_text")
         return f"✅ 完了:\n\n{t}", sfile(f"batch_{bid.strip()[:8]}.md", t)
     except Exception: return f"❌:\n```\n{traceback.format_exc()}\n```", None
@@ -101,7 +106,7 @@ def chat(msg, hist, tier, u, cid):
         t0, ft, it, ot, sc, rep, fout = time.perf_counter(), None, 0, 0, 0, "", None
         while True:
             calls = []
-            with client.responses.stream(model="gpt-6-luna", instructions=sp, input=msgs, service_tier=tier, tools=tools if sc < 2 else [tools]) as st:
+            with client.responses.stream(model="gpt-6-luna", instructions=sp, input=msgs, service_tier=tier, tools=tools if sc < 2 else [tools[1]]) as st:
                 for ev in st:
                     if ev.type == "response.output_text.delta": ft = ft or time.perf_counter(); rep += ev.delta; hist[-1]["content"] = rep; yield hist, "", fout, gr.update()
                     elif ev.type == "response.completed":
