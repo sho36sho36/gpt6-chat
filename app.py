@@ -3,17 +3,27 @@ import gradio as gr
 from ddgs import DDGS
 from openai import OpenAI
 
-DB, OUT = "users.db", tempfile.mkdtemp()
+DB, OUT = os.path.abspath("users.db"), tempfile.mkdtemp()
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", "").strip())
 hp = lambda p: hashlib.sha256(p.encode()).hexdigest()
 txt = lambda c: "".join(x.get("text", "") if isinstance(x, dict) else str(x) for x in c) if isinstance(c, list) else str(c)
 
 def db(q, a=(), f=False):
-    with sqlite3.connect(DB) as c: return c.execute(q, a).fetchall() if f else None
+    c = sqlite3.connect(DB)
+    try:
+        cur = c.execute(q, a)
+        res = cur.fetchall() if f else None
+        c.commit()
+        return res
+    finally:
+        c.close()
 
-db("CREATE TABLE IF NOT EXISTS users (u TEXT PRIMARY KEY, p TEXT, ok INT, adm INT)")
-db("CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, u TEXT, title TEXT, msgs TEXT, ts REAL)")
-db("INSERT OR IGNORE INTO users VALUES ('sho36', ?, 1, 1)", (hp("shoma0121"),))
+def init():
+    db("CREATE TABLE IF NOT EXISTS users (u TEXT PRIMARY KEY, p TEXT, ok INT, adm INT)")
+    db("CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, u TEXT, title TEXT, msgs TEXT, ts REAL)")
+    db("INSERT OR IGNORE INTO users VALUES ('sho36', ?, 1, 1)", (hp("shoma0121"),))
+
+init()
 ulist = lambda: db("SELECT u, CASE WHEN ok=1 THEN '✅許可' ELSE '⛔停止' END FROM users WHERE u!='sho36'", f=True)
 gchats = lambda u: [(r, r) for r in db("SELECT id, title FROM chats WHERE u=? ORDER BY ts DESC", (u,), True)]
 lchat = lambda cid: json.loads(r) if (r := db("SELECT msgs FROM chats WHERE id=?", (cid,), True)) else []
@@ -29,11 +39,13 @@ def dchat(u, cid):
     return (gr.update(choices=ch, value=ch), lchat(ch)) if ch else nchat(u)
 
 def reg(u, p):
+    init()
     if not u or not p: return "入力してください"
     try: db("INSERT INTO users VALUES (?, ?, 0, 0)", (u.strip(), hp(p.strip()))); return "✅ 申請完了。許可をお待ちください。"
     except sqlite3.IntegrityError: return "❌ 登録済みです"
 
 def login(u, p):
+    init()
     hide = (None, False, gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), [], gr.update(choices=[], value=None), [])
     try:
         r = db("SELECT p, ok, adm FROM users WHERE u=?", (u.strip(),), True) if u and p else []
