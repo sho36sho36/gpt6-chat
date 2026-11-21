@@ -87,10 +87,10 @@ def check_batch(bid):
     return f"✅ 完了:\n\n{txt}", save_file(f"batch_{bid.strip()[:8]}.md", txt)
 
 def chat(msg, hist, tier, u, cid):
-    if not msg.strip(): yield hist, "", None, gr.update(); return
-    hist = hist + [{"role": "user", "content": msg}]
+    if not msg or not msg.strip(): yield hist, "", None, gr.update(); return
+    hist = list(hist) + [{"role": "user", "content": msg}]
     sys_p = f"現在日付:{datetime.date.today()}。検索は最大2回まで。ファイル作成やデータ出力を頼まれたら必ず make_file ツールでファイルを生成し、チャットでは作成完了を案内してください。"
-    msgs = [{"role": m["role"], "content": m["content"]} for m in hist]
+    msgs = [{"role": m["role"], "content": str(m["content"])} for m in hist]
     if tier == "batch":
         p = save_file("b.jsonl", json.dumps({"custom_id": "1", "method": "POST", "url": "/v1/responses", "body": {"model": "gpt-6-luna", "instructions": sys_p, "input": msgs}}, ensure_ascii=False))
         b = client.batches.create(input_file_id=client.files.create(file=open(p, "rb"), purpose="batch").id, endpoint="/v1/responses", completion_window="24h")
@@ -99,7 +99,9 @@ def chat(msg, hist, tier, u, cid):
         yield hist, "", None, gr.update(); return
 
     t0, ft, it, ot, sc, rep, f_out = time.perf_counter(), None, 0, 0, 0, "", None
-    hist.append({"role": "assistant", "content": ""})
+    hist.append({"role": "assistant", "content": "考え中..."})
+    yield hist, "", f_out, gr.update()
+
     while True:
         calls = []
         with client.responses.stream(model="gpt-6-luna", instructions=sys_p, input=msgs, service_tier=tier, tools=tools if sc < 2 else [tools[1]]) as st:
